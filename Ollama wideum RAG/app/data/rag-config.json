@@ -1,0 +1,18 @@
+{
+  "chunking": {
+    "chunk_size": 1000,
+    "chunk_overlap": 150
+  },
+  "retrieval": {
+    "bm25_k": 5,
+    "vector_k": 5,
+    "final_k": 4
+  },
+  "evaluation": {
+    "context_relevance_threshold": 0.6,
+    "answer_length_min": 30
+  },
+  "memory": {
+    "recent_interactions": 5
+  }
+}

@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+requests
+langchain
+langchain-community
+chromadb
+pypdf
+rank-bm25
+numpy
+scikit-learn
+streamlit
+pandas
+pyjwt
+passlib[bcrypt]
+pathlib
+langchain_text_splitters
+
