@@ -7,7 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 BASE_DIR = Path(__file__).resolve().parent
-config_path = BASE_DIR / "config" / "rag_config.json"
+config_path = BASE_DIR / "data" / "rag-config.json"
 
 with open(config_path) as f:
     cfg = json.load(f)
@@ -18,9 +18,10 @@ embeddings = OllamaEmbeddings(
 )
 
 docs = []
-for f_name in os.listdir("./data/docs"):
+
+for f_name in os.listdir("./docs"):
     if f_name.endswith(".pdf"):
-        loader = PyPDFLoader(f"./data/docs/{f_name}")
+        loader = PyPDFLoader(f"./docs/{f_name}")
         docs.extend(loader.load())
 
 splitter = RecursiveCharacterTextSplitter(

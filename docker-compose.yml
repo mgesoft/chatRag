@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   ollama:
     image: ollama/ollama:latest
@@ -8,29 +6,64 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  rag-api:
-    build: ./app
+  # --- ESTE ES EL QUE PREPARA TODO ---
+  setup-rag:
+    build: .
+    container_name: setup_rag
+    user: root
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    # Agregamos 'ls' para depurar en el log si el archivo existe
+    command: >
+      sh -c "echo 'Verificando archivos...' && ls -l ingest.py &&
+             curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' && 
+             curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}' && 
+             python ingest.py"
+
+  rag_api:
+    build: .
     container_name: rag_api
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    user: myuser
     ports:
       - "8000:8000"
-    volumes:
-      - ./app:/app
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
-      - ollama
+      setup-rag:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
 
-  rag-dashboard:
-    build: ./app
+  rag_dashboard:
+    build: .
     container_name: rag_dashboard
-    command: streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
+    user: myuser
     ports:
       - "8501:8501"
-    volumes:
-      - ./app:/app
+    environment:
+      - API_URL=http://rag_api:8000
     depends_on:
-      - rag-api
+      rag_api:
+        condition: service_started
+    restart: unless-stopped
+    command: streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
 
 volumes:
   ollama_data:

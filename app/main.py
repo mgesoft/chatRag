@@ -1,156 +1,198 @@
+import os
+import json
+import asyncio
+import httpx
+import numpy as np
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, status
+from datetime import datetime
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import json, os, requests, numpy as np, jwt
-from datetime import datetime, timedelta
-from passlib.context import CryptContext
-from pydantic import BaseModel
-from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.vectorstores import Chroma
+from fastapi.staticfiles import StaticFiles
+
+# --- Librerías RAG ---
+from langchain_ollama import OllamaEmbeddings
+from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from rank_bm25 import BM25Okapi
-from evaluate import evaluate_answer
 
+# Importación de tu script local (asegúrate de que evaluate.py esté en la carpeta)
+try:
+    from evaluate import evaluate_answer
+except ImportError:
+    def evaluate_answer(q, c, a):
+        return {"score": 0, "reason": "Evaluator not found"}
 
+# --- Configuración de Rutas ---
 BASE_DIR = Path(__file__).resolve().parent
-config_path = BASE_DIR / "config" / "rag_config.json"
+CONFIG_PATH = BASE_DIR / "config" / "rag-config.json"
+DOCS_DIR = BASE_DIR / "docs"
+DATA_DIR = BASE_DIR / "data"
+CHROMA_DIR = DATA_DIR / "chroma"
 
-# --- Config ---
-with open(config_path) as f:
-    cfg = json.load(f)
+app = FastAPI()
 
-app = FastAPI(title="RAG PDFs Técnicos")
+# --- Carga de Configuración ---
+if not CONFIG_PATH.exists():
+    CONFIG_PATH = BASE_DIR / "data" / "rag-config.json"
 
-# --- JWT ---
-SECRET_KEY = "supersecretkey123"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+try:
+    with open(CONFIG_PATH) as f:
+        cfg = json.load(f)
+except Exception:
+    cfg = {"retrieval": {"bm25_k": 3, "vector_k": 3, "final_k": 5}}
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-fake_user = {"username": "admin", "password": pwd_context.hash("1234")}
+# --- Inicialización RAG ---
+# Se inicializa al arrancar la API
+embeddings = OllamaEmbeddings(
+    model="nomic-embed-text",
+    base_url="http://ollama:11434"
+)
 
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta if expires_delta else timedelta(minutes=15))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+vector_db = Chroma(
+    persist_directory=str(CHROMA_DIR),
+    embedding_function=embeddings
+)
 
-def verify_token(token: str):
+docs_list = []
+texts_content = []
+
+print("Cargando documentos para búsqueda léxica...")
+if DOCS_DIR.exists():
+    for f_name in os.listdir(DOCS_DIR):
+        if f_name.endswith(".pdf"):
+            try:
+                loader = PyPDFLoader(str(DOCS_DIR / f_name))
+                for d in loader.load():
+                    docs_list.append(d)
+                    texts_content.append(d.page_content.lower())
+            except Exception as e:
+                print(f"Error cargando {f_name}: {e}")
+
+bm25 = BM25Okapi([t.split() for t in texts_content]) if texts_content else None
+print(f"BM25 inicializado con {len(docs_list)} páginas.")
+
+
+# --- Lógica de WebSocket ---
+
+@app.websocket("/init")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("Cliente conectado vía WebSocket")
+    # --- NUEVO: Saludo inicial ---
+    saludo = "¡Hola! Soy tu asistente técnico Wideum. ¿En qué puedo ayudarte hoy con tus documentos?"
+
+    await websocket.send_json({"action": "init_system_response"})
+    # Enviamos el saludo
+    await websocket.send_json({
+        "action": "append_system_response",
+        "content": saludo
+    })
+    await websocket.send_json({"action": "finish_system_response"})
+    # ----------------------------
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub")
-    except jwt.PyJWTError:
-        return None
+        while True:
+            # Recibir el historial enviado por el JS
+            raw_data = await websocket.receive_text()
+            chat_history = json.loads(raw_data)
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    username = verify_token(token)
-    if username is None:
-        raise HTTPException(status_code=401, detail="Token inválido o expirado")
-    return username
+            # La última entrada es el mensaje actual del usuario
+            user_query = chat_history[-1]["content"]
+            print(f"Procesando pregunta: {user_query}")
 
-# --- Login ---
-@app.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = fake_user
-    if form_data.username != user["username"] or not pwd_context.verify(form_data.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
-    access_token = create_access_token({"sub": user["username"]}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    return {"access_token": access_token, "token_type": "bearer"}
+            # 1. Recuperación RAG (Híbrida)
+            context_text = ""
+            if bm25:
+                # Búsqueda BM25
+                bm_scores = bm25.get_scores(user_query.lower().split())
+                bm_idx = np.argsort(bm_scores)[-cfg["retrieval"]["bm25_k"]:][::-1]
+                bm_docs = [docs_list[i] for i in bm_idx]
 
-# --- Serve chat web ---
-app.mount("/static", os.path.join("static"), name="static")
+                # Búsqueda Vectorial
+                vec_docs = vector_db.similarity_search(user_query, k=cfg["retrieval"]["vector_k"])
 
+                # Unificar
+                merged = {d.page_content: d for d in bm_docs + vec_docs}
+                final_docs = list(merged.values())[:cfg["retrieval"]["final_k"]]
+                context_text = "\n\n".join([d.page_content for d in final_docs])
+
+            # 2. Notificar al JS que la respuesta del sistema comienza
+            await websocket.send_json({"action": "init_system_response"})
+
+            # 3. Petición Streaming a Ollama con httpx
+            prompt = f"""
+            Instrucción: Responde de forma breve y concisa (máximo 3 frases). 
+            Si la respuesta no está en el contexto, di simplemente que no lo sabes.
+            No repitas la pregunta ni saludes.
+
+            Contexto:
+            {context_text}
+
+            Pregunta: {user_query}
+            """
+
+            full_answer = ""
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                        "POST",
+                        "http://ollama:11434/api/chat",
+                        json={
+                            "model": "llama3.2",
+                            "messages": [
+                                # Añadimos un mensaje de sistema para reforzar la brevedad
+                                {"role": "system",
+                                 "content": "Eres un asistente técnico que responde con brevedad extrema."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            "stream": True,
+                            "options": {
+                                "num_predict": 120,  # Respuesta corta para no saturar
+                                "temperature": 0.1,  # Respuesta precisa
+                                "num_gpu": 1,  # Fuerza el uso de la GPU
+                                "num_thread": 4  # Hilos de apoyo de CPU
+                            }
+                        }
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+
+                        chunk = json.loads(line)
+                        if "message" in chunk:
+                            content = chunk["message"].get("content", "")
+                            full_answer += content
+
+                            # Enviamos el pedazo de texto al JS
+                            await websocket.send_json({
+                                "action": "append_system_response",
+                                "content": content
+                            })
+
+                        if chunk.get("done"):
+                            break
+
+            # 4. Finalizar la respuesta
+            await websocket.send_json({"action": "finish_system_response"})
+            print("Respuesta completada y enviada.")
+
+    except WebSocketDisconnect:
+        print("El cliente cerró la conexión.")
+    except Exception as e:
+        print(f"Error en el socket: {e}")
+        await websocket.close()
+
+
+# --- Archivos Estáticos y UI ---
+
+# Montar la carpeta static para CSS/JS/Imágenes
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# Ruta principal: Sirve el index.html
 @app.get("/")
-def chat_ui(user: str = Depends(get_current_user)):
-    return FileResponse("static/index.html")
-
-# --- RAG setup ---
-embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url="http://ollama:11434")
-vector_db = Chroma(persist_directory="./data/chroma", embedding_function=embeddings)
-
-docs, texts = [], []
-for f_name in os.listdir("./data/docs"):
-    if f_name.endswith(".pdf"):
-        loader = PyPDFLoader(f"./data/docs/{f_name}")
-        for d in loader.load():
-            docs.append(d)
-            texts.append(d.page_content.lower())
-
-bm25 = BM25Okapi([t.split() for t in texts])
-
-HISTORY_DIR = "./data/chats"
-os.makedirs(HISTORY_DIR, exist_ok=True)
-LOG_PATH = "./data/evaluations.jsonl"
-
-def load_history(username):
-    path = os.path.join(HISTORY_DIR, f"{username}.json")
-    if os.path.exists(path):
-        with open(path) as f:
-            return json.load(f)
-    return []
-
-def save_history(username, history):
-    path = os.path.join(HISTORY_DIR, f"{username}.json")
-    with open(path, "w") as f:
-        json.dump(history, f, indent=2)
-
-class Question(BaseModel):
-    question: str
-    model: str = "llama2"
-
-@app.post("/rag")
-def rag(q: Question, user: str = Depends(get_current_user)):
-    # Historial
-    history = load_history(user)
-
-    # Hybrid Retrieval
-    bm_scores = bm25.get_scores(q.question.lower().split())
-    bm_idx = np.argsort(bm_scores)[-cfg["retrieval"]["bm25_k"]:][::-1]
-    bm_docs = [docs[i] for i in bm_idx]
-    vec_docs = vector_db.similarity_search(q.question, k=cfg["retrieval"]["vector_k"])
-    merged = {d.page_content: d for d in bm_docs + vec_docs}
-    final_docs = list(merged.values())[:cfg["retrieval"]["final_k"]]
-
-    context = "\n\n".join(f"[{i+1}] {d.page_content}" for i, d in enumerate(final_docs))
-    sources = [f"PDF:{d.metadata.get('source','unknown')} Page:{d.metadata.get('page','?')}" for d in final_docs]
-
-    # Prompt con memoria
-    recent_hist = history[-cfg["memory"]["recent_interactions"]:]
-    chat_context = "\n".join([f"Usuario: {m['user']}\nAI: {m['ai']}" for m in recent_hist])
-    prompt = f"""
-Historial reciente:
-{chat_context}
-
-Contexto con referencias:
-{context}
-
-Pregunta:
-{q.question}
-
-Responde mencionando referencias si es posible.
-"""
-
-    res = requests.post(
-        "http://ollama:11434/api/chat",
-        json={"model": q.model, "messages":[{"role":"user","content":prompt}], "stream": False},
-        timeout=180
-    ).json()
-
-    answer = res["message"]["content"]
-    evaluation = evaluate_answer(q.question, context, answer)
-
-    # Guardar historial usuario
-    history.append({"timestamp": datetime.utcnow().isoformat(),
-                    "user": q.question, "ai": answer,
-                    "sources": sources, **evaluation})
-    save_history(user, history)
-
-    # Log global evaluaciones
-    record = {"timestamp": datetime.utcnow().isoformat(), "username": user,
-              "question": q.question, "answer": answer, **evaluation}
-    with open(LOG_PATH, "a") as f:
-        f.write(json.dumps(record)+"\n")
-
-    return {"answer": answer, "evaluation": evaluation, "sources": sources, "history_len": len(history)}
+async def get_index():
+    index_path = os.path.join("static", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"error": "Archivo static/index.html no encontrado"}

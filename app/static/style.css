@@ -1,9 +1,0 @@
-body { background: #0f172a; font-family: Arial; color: #e5e7eb; }
-.chat-container { max-width: 900px; margin: 30px auto; background: #020617; padding: 20px; border-radius: 8px; }
-#chat { height: 450px; overflow-y: auto; border: 1px solid #1e293b; padding: 10px; margin-bottom: 10px; }
-.message { margin-bottom: 12px; }
-.user { color: #38bdf8; }
-.ai { color: #a7f3d0; }
-.input-area { display: flex; gap: 10px; }
-textarea { flex: 1; height: 60px; background: #020617; color: #e5e7eb; border: 1px solid #334155; padding: 8px; }
-button { background: #2563eb; color: white; border: none; padding: 10px 16px; cursor: pointer; }
