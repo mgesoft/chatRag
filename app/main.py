@@ -1,198 +1,128 @@
 import os
 import json
-import asyncio
 import httpx
-import numpy as np
-from pathlib import Path
-from datetime import datetime
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# --- Librerías RAG ---
+# --- Importaciones RAG ---
 from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import PyPDFLoader
-from rank_bm25 import BM25Okapi
-
-# Importación de tu script local (asegúrate de que evaluate.py esté en la carpeta)
-try:
-    from evaluate import evaluate_answer
-except ImportError:
-    def evaluate_answer(q, c, a):
-        return {"score": 0, "reason": "Evaluator not found"}
-
-# --- Configuración de Rutas ---
-BASE_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = BASE_DIR / "config" / "rag-config.json"
-DOCS_DIR = BASE_DIR / "docs"
-DATA_DIR = BASE_DIR / "data"
-CHROMA_DIR = DATA_DIR / "chroma"
 
 app = FastAPI()
 
-# --- Carga de Configuración ---
-if not CONFIG_PATH.exists():
-    CONFIG_PATH = BASE_DIR / "data" / "rag-config.json"
-
-try:
-    with open(CONFIG_PATH) as f:
-        cfg = json.load(f)
-except Exception:
-    cfg = {"retrieval": {"bm25_k": 3, "vector_k": 3, "final_k": 5}}
-
-# --- Inicialización RAG ---
-# Se inicializa al arrancar la API
+# --- Configuración de Modelos y DB ---
+# Usamos el mismo modelo de embeddings que en ingest.py
 embeddings = OllamaEmbeddings(
     model="nomic-embed-text",
     base_url="http://ollama:11434"
 )
 
+# Cargamos la base de datos que ya tiene los 13 chunks
 vector_db = Chroma(
-    persist_directory=str(CHROMA_DIR),
+    persist_directory="./data/chroma",
     embedding_function=embeddings
 )
 
-docs_list = []
-texts_content = []
-
-print("Cargando documentos para búsqueda léxica...")
-if DOCS_DIR.exists():
-    for f_name in os.listdir(DOCS_DIR):
-        if f_name.endswith(".pdf"):
-            try:
-                loader = PyPDFLoader(str(DOCS_DIR / f_name))
-                for d in loader.load():
-                    docs_list.append(d)
-                    texts_content.append(d.page_content.lower())
-            except Exception as e:
-                print(f"Error cargando {f_name}: {e}")
-
-bm25 = BM25Okapi([t.split() for t in texts_content]) if texts_content else None
-print(f"BM25 inicializado con {len(docs_list)} páginas.")
-
-
-# --- Lógica de WebSocket ---
 
 @app.websocket("/init")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("Cliente conectado vía WebSocket")
-    # --- NUEVO: Saludo inicial ---
-    saludo = "¡Hola! Soy tu asistente técnico Wideum. ¿En qué puedo ayudarte hoy con tus documentos?"
+    print("🚀 WebSocket Conectado")
 
-    await websocket.send_json({"action": "init_system_response"})
-    # Enviamos el saludo
-    await websocket.send_json({
-        "action": "append_system_response",
-        "content": saludo
-    })
-    await websocket.send_json({"action": "finish_system_response"})
-    # ----------------------------
     try:
+        # 1. SALUDO INICIAL
+        await websocket.send_json({"action": "init_system_response"})
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream("POST", "http://ollama:11434/api/chat",
+                                     json={
+                                         "model": "llama3.2",
+                                         "messages": [{"role": "user",
+                                                       "content": "Saluda brevemente y di que estás listo para analizar los documentos de Remote Eye."}],
+                                         "stream": True,
+                                         "options": {"num_gpu": 0, "num_thread": 4}
+                                     }) as response:
+                async for line in response.aiter_lines():
+                    if not line: continue
+                    chunk = json.loads(line)
+                    content = chunk.get("message", {}).get("content", "")
+                    if content:
+                        await websocket.send_json({"action": "append_system_response", "content": content})
+        await websocket.send_json({"action": "finish_system_response"})
+
+        # 2. BUCLE DE PREGUNTAS (RAG REAL)
         while True:
-            # Recibir el historial enviado por el JS
-            raw_data = await websocket.receive_text()
-            chat_history = json.loads(raw_data)
+            data = await websocket.receive_text()
+            payload = json.loads(data)
+            user_query = payload[-1]["content"]
 
-            # La última entrada es el mensaje actual del usuario
-            user_query = chat_history[-1]["content"]
-            print(f"Procesando pregunta: {user_query}")
+            print(f"\n📩 Pregunta recibida: {user_query}")
 
-            # 1. Recuperación RAG (Híbrida)
-            context_text = ""
-            if bm25:
-                # Búsqueda BM25
-                bm_scores = bm25.get_scores(user_query.lower().split())
-                bm_idx = np.argsort(bm_scores)[-cfg["retrieval"]["bm25_k"]:][::-1]
-                bm_docs = [docs_list[i] for i in bm_idx]
+            # --- BUSQUEDA EN TUS PDFS ---
+            print("🔍 Buscando en la base de datos vectorial...")
+            # Aumentamos a k=5 para capturar más información
+            docs = vector_db.similarity_search(user_query, k=5)
 
-                # Búsqueda Vectorial
-                vec_docs = vector_db.similarity_search(user_query, k=cfg["retrieval"]["vector_k"])
+            if not docs:
+                print("❌ No se encontró nada relevante en los PDFs.")
+                contexto = "No hay información específica en los documentos."
+            else:
+                print(f"✅ Se encontraron {len(docs)} fragmentos.")
+                # Esto imprimirá en tu terminal lo que el sistema "lee"
+                contexto = ""
+                for i, d in enumerate(docs):
+                    print(f"--- Fragmento {i + 1} de {d.metadata.get('source', 'desconocido')} ---")
+                    print(f"Contenido: {d.page_content[:150]}...")
+                    contexto += f"\n--- FRAGMENTO {i + 1} ---\n{d.page_content}\n"
 
-                # Unificar
-                merged = {d.page_content: d for d in bm_docs + vec_docs}
-                final_docs = list(merged.values())[:cfg["retrieval"]["final_k"]]
-                context_text = "\n\n".join([d.page_content for d in final_docs])
+            # Prompt optimizado para que no sea tan tímido
+            prompt_final = f"""Eres un asistente técnico experto en 'Remote Eye'.
+Utiliza el CONTEXTO proporcionado para responder la PREGUNTA de forma detallada.
+Si la respuesta no aparece exactamente igual, intenta explicar lo que entiendas del texto.
 
-            # 2. Notificar al JS que la respuesta del sistema comienza
+CONTEXTO:
+{contexto}
+
+PREGUNTA: {user_query}
+
+RESPUESTA EN ESPAÑOL:"""
+
             await websocket.send_json({"action": "init_system_response"})
 
-            # 3. Petición Streaming a Ollama con httpx
-            prompt = f"""
-            Instrucción: Responde de forma breve y concisa (máximo 3 frases). 
-            Si la respuesta no está en el contexto, di simplemente que no lo sabes.
-            No repitas la pregunta ni saludes.
-
-            Contexto:
-            {context_text}
-
-            Pregunta: {user_query}
-            """
-
-            full_answer = ""
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                        "POST",
-                        "http://ollama:11434/api/chat",
-                        json={
-                            "model": "llama3.2",
-                            "messages": [
-                                # Añadimos un mensaje de sistema para reforzar la brevedad
-                                {"role": "system",
-                                 "content": "Eres un asistente técnico que responde con brevedad extrema."},
-                                {"role": "user", "content": prompt}
-                            ],
-                            "stream": True,
-                            "options": {
-                                "num_predict": 120,  # Respuesta corta para no saturar
-                                "temperature": 0.1,  # Respuesta precisa
-                                "num_gpu": 1,  # Fuerza el uso de la GPU
-                                "num_thread": 4  # Hilos de apoyo de CPU
-                            }
-                        }
-                ) as response:
+            # --- RESPUESTA DE LLAMA 3.2 ---
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                async with client.stream("POST", "http://ollama:11434/api/chat",
+                                         json={
+                                             "model": "llama3.2",
+                                             "messages": [{"role": "user", "content": prompt_final}],
+                                             "stream": True,
+                                             "options": {
+                                                 "num_gpu": 0,
+                                                 "num_thread": 4,
+                                                 "temperature": 0.2,  # Un poco más de creatividad
+                                                 "num_ctx": 4096  # Suficiente espacio para el contexto
+                                             }
+                                         }) as response:
                     async for line in response.aiter_lines():
-                        if not line:
-                            continue
-
+                        if not line: continue
                         chunk = json.loads(line)
-                        if "message" in chunk:
-                            content = chunk["message"].get("content", "")
-                            full_answer += content
+                        content = chunk.get("message", {}).get("content", "")
+                        if content:
+                            await websocket.send_json({"action": "append_system_response", "content": content})
 
-                            # Enviamos el pedazo de texto al JS
-                            await websocket.send_json({
-                                "action": "append_system_response",
-                                "content": content
-                            })
-
-                        if chunk.get("done"):
-                            break
-
-            # 4. Finalizar la respuesta
             await websocket.send_json({"action": "finish_system_response"})
-            print("Respuesta completada y enviada.")
+            print("✅ Respuesta enviada. Esperando siguiente pregunta...")
 
     except WebSocketDisconnect:
-        print("El cliente cerró la conexión.")
+        print("🔌 Conexión cerrada.")
     except Exception as e:
-        print(f"Error en el socket: {e}")
-        await websocket.close()
+        print(f"🔥 Error en el servidor: {e}")
 
 
-# --- Archivos Estáticos y UI ---
-
-# Montar la carpeta static para CSS/JS/Imágenes
-if os.path.exists("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+# Servir estáticos
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# Ruta principal: Sirve el index.html
 @app.get("/")
 async def get_index():
-    index_path = os.path.join("static", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"error": "Archivo static/index.html no encontrado"}
+    return FileResponse("static/index.html")

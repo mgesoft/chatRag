@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   ollama:
     image: ollama/ollama:latest
@@ -6,13 +8,6 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "ollama", "list"]
@@ -20,7 +15,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- ESTE ES EL QUE PREPARA TODO ---
+  # --- PROCESADOR DE DOCUMENTOS (Ingesta) ---
   setup-rag:
     build: .
     container_name: setup_rag
@@ -30,35 +25,44 @@ services:
         condition: service_healthy
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-    # Agregamos 'ls' para depurar en el log si el archivo existe
+    volumes:
+      - ./data/chroma:/app/data/chroma  # Persistencia de la DB
+      - ./app/docs:/app/docs                # Tus PDFs en Windows
     command: >
-      sh -c "echo 'Verificando archivos...' && ls -l ingest.py &&
+      sh -c "echo 'Iniciando descarga de modelos y procesamiento...' && 
              curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' && 
              curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}' && 
              python ingest.py"
 
+  # --- API PRINCIPAL ---
   rag_api:
     build: .
     container_name: rag_api
-    user: myuser
+    user: root
     ports:
       - "8000:8000"
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - .:/app                          # Sincroniza tu main.py
+      - ./data/chroma:/app/data/chroma  # Lee la DB creada por setup-rag
     depends_on:
       setup-rag:
         condition: service_completed_successfully
     restart: unless-stopped
     command: uvicorn main:app --host 0.0.0.0 --port 8000
 
+  # --- PANEL DE CONTROL (Opcional) ---
   rag_dashboard:
     build: .
     container_name: rag_dashboard
-    user: myuser
+    user: root
     ports:
       - "8501:8501"
     environment:
       - API_URL=http://rag_api:8000
+    volumes:
+      - .:/app
     depends_on:
       rag_api:
         condition: service_started
