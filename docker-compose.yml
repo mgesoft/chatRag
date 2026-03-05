@@ -29,7 +29,7 @@ services:
       - ./app/docs:/app/docs                # Tus PDFs en Windows
     command: >
       sh -c "echo 'Iniciando descarga de modelos y procesamiento...' && 
-             curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' && 
+             curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"phi3\"}' && 
              curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}' && 
              python ingest.py"
 

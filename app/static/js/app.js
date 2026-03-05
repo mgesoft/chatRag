@@ -7,9 +7,9 @@ const loadingBar = document.getElementById("loadingbar");
 const connectionStatus = document.getElementById("connection-status");
 
 let linesData = [];
-let currentResponseDiv = null;  // ✅ Referencia directa al div de respuesta
+let currentResponseDiv = null;  //  Referencia directa al div de respuesta
 
-// ✅ Manejar teclas
+//  Manejar teclas
 function handleKeyDown(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
@@ -18,25 +18,25 @@ function handleKeyDown(event) {
     }
 }
 
-// ✅ Auto-resize del textarea
+//  Auto-resize del textarea
 function autoResize(element) {
     element.style.height = 'auto';
     element.style.height = Math.min(element.scrollHeight, 150) + 'px';
 }
 
-// ✅ Obtener texto limpio
+//  Obtener texto limpio
 function getInputText() {
     return chatInput.innerText.trim();
 }
 
-// ✅ Limpiar input
+//  Limpiar input
 function clearInput() {
     chatInput.innerText = "";
     chatInput.style.height = 'auto';
     chatInput.focus();
 }
 
-// ✅ Enviar mensaje
+//  Enviar mensaje
 function submitText() {
     const message = getInputText();
     if (message === "") return false;
@@ -58,9 +58,9 @@ function submitText() {
     // 4. Enviar al servidor
     try {
         socket.send(JSON.stringify(linesData));
-        console.log("✅ Historial enviado:", linesData.length, "mensajes");
+        console.log(" Historial enviado:", linesData.length, "mensajes");
     } catch (error) {
-        console.error("❌ Error enviando:", error);
+        console.error(" Error enviando:", error);
         alert("Error de conexión. Recarga la página.");
         return false;
     }
@@ -69,63 +69,63 @@ function submitText() {
     loadingBar.style.display = 'flex';
     scrollToBottom();
 
-    // 6. ✅ Crear contenedor de respuesta del asistente
+    // 6.  Crear contenedor de respuesta del asistente
     currentResponseDiv = document.createElement("div");
     currentResponseDiv.className = "line server";
     currentResponseDiv.innerHTML = '<span class="typing-indicator">...</span>';
     lines.appendChild(currentResponseDiv);
 
-    // 7. ✅ Agregar placeholder al historial
+    // 7.  Agregar placeholder al historial
     linesData.push({ role: "assistant", content: "" });
 
     scrollToBottom();
     return false;
 }
 
-// ✅ Actualizar respuesta en tiempo real
+//  Actualizar respuesta en tiempo real
 function updateLastResponse(content) {
-    // ✅ Usar referencia directa al div
+    //  Usar referencia directa al div
     if (!currentResponseDiv) {
-        console.warn("⚠️ No hay div de respuesta activo");
+        console.warn(" No hay div de respuesta activo");
         return;
     }
 
-    // ✅ Buscar el último assistant en linesData
+    //  Buscar el último assistant en linesData
     const lastIndex = linesData.length - 1;
     if (linesData[lastIndex] && linesData[lastIndex].role === "assistant") {
         linesData[lastIndex].content += content;
         currentResponseDiv.innerHTML = marked.parse(linesData[lastIndex].content);
         scrollToBottom();
     } else {
-        console.warn("⚠️ No hay mensaje assistant en linesData");
+        console.warn(" No hay mensaje assistant en linesData");
         console.log("linesData:", linesData);
     }
 }
 
-// ✅ Finalizar respuesta
+//  Finalizar respuesta
 function finishResponse() {
-    console.log("✅ Respuesta finalizada");
+    console.log(" Respuesta finalizada");
     loadingBar.style.display = 'none';
-    currentResponseDiv = null;  // ✅ Limpiar referencia
+    currentResponseDiv = null;  //  Limpiar referencia
 }
 
-// ✅ Scroll al fondo
+//  Scroll al fondo
 function scrollToBottom() {
     linesContainer.scrollTop = linesContainer.scrollHeight;
 }
 
-// ✅ Manejar mensajes del servidor
+//  Manejar mensajes del servidor
 socket.onmessage = function(event) {
     try {
         const rdata = JSON.parse(event.data);
-        console.log("📩 [WS] Acción:", rdata.action);
+        console.log(" [WS] Acción:", rdata.action);
         if (rdata.content) {
-            console.log("📩 [WS] Contenido:", rdata.content.substring(0, 50));
+            console.log(" [WS] Contenido:", rdata.content.substring(0, 50));
         }
 
         switch(rdata.action) {
             case "init_system_response":
-                // ✅ Solo para saludo inicial o nueva respuesta
+                //  Solo para saludo inicial o nueva respuesta
                 if (!currentResponseDiv && linesData.length > 0) {
                     // Si no hay respuesta activa pero hay historial, crear una
                     currentResponseDiv = document.createElement("div");
@@ -146,18 +146,18 @@ socket.onmessage = function(event) {
 
             case "error":
                 loadingBar.style.display = 'none';
-                alert("⚠️ Error: " + rdata.message);
+                alert(" Error: " + rdata.message);
                 break;
         }
     } catch (e) {
-        console.error("💥 Error parseando mensaje:", e);
+        console.error(" Error parseando mensaje:", e);
         console.error("Datos raw:", event.data);
     }
 };
 
-// ✅ Estado de conexión
+//  Estado de conexión
 socket.onopen = () => {
-    console.log("✅ WebSocket CONNECTED");
+    console.log(" WebSocket CONNECTED");
     if (connectionStatus) {
         connectionStatus.textContent = "● Conectado";
         connectionStatus.className = "status-connected";
@@ -175,10 +175,10 @@ socket.onclose = () => {
 };
 
 socket.onerror = (error) => {
-    console.error("❌ WebSocket ERROR:", error);
+    console.error(" WebSocket ERROR:", error);
 };
 
-// ✅ Focus al cargar
+//  Focus al cargar
 window.onload = () => {
     if (chatInput) chatInput.focus();
 };

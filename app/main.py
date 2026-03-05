@@ -39,7 +39,7 @@ async def websocket_endpoint(websocket: WebSocket):
         async with httpx.AsyncClient(timeout=30.0) as client:
             async with client.stream("POST", "http://ollama:11434/api/chat",
                                      json={
-                                         "model": "llama3.2",
+                                         "model": "phi3",
                                          "messages": [{"role": "user",
                                                        "content": "Saluda brevemente."}],
                                          "stream": True,
@@ -73,7 +73,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # 3. Extraer la pregunta actual (último mensaje)
                 user_query = conversation_history[-1]["content"]
-                print(f"\n📩 Pregunta recibida: {user_query}")
+                print(f"\n Pregunta recibida: {user_query}")
 
                 # 4. --- BUSQUEDA EN VECTOR DB (RAG) ---
                 print("🔍 Buscando en la base de datos vectorial...")
@@ -98,12 +98,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 messages_for_ollama = [
                     {
                         "role": "system",
-                        "content": f"""Eres un asistente técnico experto en 'Remote Eye'.
-        Utiliza el CONTEXTO proporcionado para responder la PREGUNTA de forma detallada.
-        Si la respuesta no aparece exactamente igual, intenta explicar lo que entiendas del texto.
-        Responde siempre en ESPAÑOL.
+                        "content": f"""⚠️ INSTRUCCIONES CRÍTICAS:
+1. SOLO usa la información del CONTEXTO proporcionado abajo.
+2. Si la respuesta NO está en el contexto, di exactamente: "No encuentro esa información en los documentos."
+3. NO uses tu conocimiento general ni inventes información.
+4. Cita siempre la fuente (nombre del PDF y página) cuando respondas.
+5. Responde en el idioma que te preguntes
 
-        CONTEXTO DOCUMENTAL:
+---
+CONTEXTO DE DOCUMENTOS (tus PDFs):
         {contexto}"""
                     }
                 ]
@@ -118,14 +121,17 @@ async def websocket_endpoint(websocket: WebSocket):
                             "POST",
                             "http://ollama:11434/api/chat",  #  Ajustado para ejecución en host
                             json={
-                                "model": "llama3.2",
+                                "model": "phi3",
                                 "messages": messages_for_ollama,  #  Historial + contexto
                                 "stream": True,
                                 "options": {
-                                    "num_gpu": 0,
+                                    "num_gpu": 0,  # 0 = solo CPU ( 1+ si  GPU)
                                     "num_thread": 4,
-                                    "temperature": 0.2,
-                                    "num_ctx": 8192  #  Aumentado para historial + contexto RAG
+                                    "temperature": 0.1,  # Menos creatividad = respuestas más directas y rápidas
+                                    "num_ctx": 2048,  # Reduce si tus prompts no son muy largos (ahorra memoria)
+                                    "num_predict": 512,  # Límite de tokens de respuesta (evita respuestas infinitas)
+                                    "top_p": 0.9,  # Muestreo más eficiente
+                                    "repeat_penalty": 1.1  # Evita bucles de repetición
                                 }
                             }
                     ) as response:
@@ -150,7 +156,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 print("🔌 Conexión cerrada por el cliente.")
                 break  #  Salir del bucle si se desconecta
             except Exception as e:
-                print(f"🔥 Error en el servidor: {type(e).__name__} - {e}")
+                print(f" Error en el servidor: {type(e).__name__} - {e}")
                 # Intentar notificar al cliente si aún está conectado
                 try:
                     await websocket.send_json({"action": "error", "message": str(e)})
@@ -162,7 +168,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         print("🔌 Conexión cerrada.")
     except Exception as e:
-        print(f"🔥 Error en el servidor: {e}")
+        print(f" Error en el servidor: {e}")
 
 
 # Servir estáticos
@@ -195,3 +201,25 @@ async def health_check():
         import logging
         logging.error(f"Health check failed: {e}")
         return {"status": "error", "detail": str(e)}
+
+
+@app.get("/debug/search")
+async def debug_search(q: str = "¿Qué es Remote Eye?"):
+    """Verifica qué chunks recupera la búsqueda vectorial"""
+    docs = vector_db.similarity_search(q, k=5)
+
+    results = []
+    for i, doc in enumerate(docs):
+        results.append({
+            "chunk": i + 1,
+            "source": doc.metadata.get("source", "desconocido"),
+            "page": doc.metadata.get("page", "N/A"),
+            "score": doc.metadata.get("score", "N/A"),
+            "content": doc.page_content[:200] + "..."  # Primeros 200 chars
+        })
+
+    return {
+        "query": q,
+        "chunks_found": len(docs),
+        "results": results
+    }
