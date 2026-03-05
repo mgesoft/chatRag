@@ -79,38 +79,44 @@ async def websocket_endpoint(websocket: WebSocket):
                 print("🔍 Buscando en la base de datos vectorial...")
                 docs = vector_db.similarity_search(user_query, k=5)
 
-                if not docs:
-                    print(" No se encontró nada relevante en los PDFs.")
-                    contexto = "No hay información específica en los documentos."
-                else:
-                    print(f" Se encontraron {len(docs)} fragmentos.")
-                    contexto = ""
-                    for i, d in enumerate(docs):
-                        print(f"--- Fragmento {i + 1} de {d.metadata.get('source', 'desconocido')} ---")
-                        print(f"Contenido: {d.page_content[:150]}...")
-                        contexto += f"\n--- FRAGMENTO {i + 1} ---\n{d.page_content}\n"
+                print(f" Se encontraron {len(docs)} fragmentos.")
+                contexto = ""
+                for i, d in enumerate(docs):
+                    fuente = d.metadata.get('filename', d.metadata.get('source', 'desconocido'))
+                    pagina = d.metadata.get('page', '?')
+                    print(f"--- Fragmento {i + 1} de {fuente} (pág. {pagina}) ---")
+                    print(f"Contenido: {d.page_content[:150]}...")
+                    #  Formato más limpio con fuente y página
+                    contexto += f"\n[FUENTE: {fuente} - Página {pagina}]\n{d.page_content}\n"
 
                 # 5.  Preparar mensajes para Ollama CON historial
                 # Limitamos a los últimos 10 mensajes para no saturar el contexto
                 recent_history = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
 
-                # Construir el array de mensajes para Ollama
                 messages_for_ollama = [
                     {
                         "role": "system",
-                        "content": f"""⚠️ INSTRUCCIONES CRÍTICAS:
-1. SOLO usa la información del CONTEXTO proporcionado abajo.
-2. Si la respuesta NO está en el contexto, di exactamente: "No encuentro esa información en los documentos."
-3. NO uses tu conocimiento general ni inventes información.
-4. Cita siempre la fuente (nombre del PDF y página) cuando respondas.
-5. Responde en el idioma que te preguntes
+                        "content": f"""### ROL
+                Eres un asistente experto en Remote Eye. Usa los documentos como fuente principal.
 
----
-CONTEXTO DE DOCUMENTOS (tus PDFs):
-        {contexto}"""
+                ### CONTEXTO
+                <documentos>
+                {contexto}
+                </documentos>
+
+                ### INSTRUCCIONES
+                1. Responde en el idioma de la pregunta.
+                2. Prioriza la información de los <documentos>.
+                3. Si encuentras información relacionada, úsala con confianza.
+                4. Si NO hay nada relevante, di: "No encuentro detalles específicos en los documentos" y ofrece lo más cercano que veas.
+                5. Menciona la fuente cuando sea útil (ej: "Según wideum.pdf...").
+
+                ### PREGUNTA
+                """
                     }
                 ]
-                #  Añadir el historial de conversación (user/assistant)
+                # Añadir la pregunta al final del sistema + historial
+                messages_for_ollama.append({"role": "user", "content": user_query})
                 messages_for_ollama.extend(recent_history)
 
                 # 6. Enviar respuesta streaming
@@ -127,7 +133,7 @@ CONTEXTO DE DOCUMENTOS (tus PDFs):
                                 "options": {
                                     "num_gpu": 0,  # 0 = solo CPU ( 1+ si  GPU)
                                     "num_thread": 4,
-                                    "temperature": 0.1,  # Menos creatividad = respuestas más directas y rápidas
+                                    "temperature": 0.3,  # creatividad  numero mas bajo = respuestas más directas y rápidas
                                     "num_ctx": 2048,  # Reduce si tus prompts no son muy largos (ahorra memoria)
                                     "num_predict": 512,  # Límite de tokens de respuesta (evita respuestas infinitas)
                                     "top_p": 0.9,  # Muestreo más eficiente
