@@ -13,7 +13,7 @@ def start_ingestion():
     print(f"📂 Buscando en ruta absoluta: {docs_path}")
 
     if not os.path.exists(docs_path) or not os.listdir(docs_path):
-        print(f"❌ ERROR: No hay archivos en {docs_path}")
+        print(f" ERROR: No hay archivos en {docs_path}")
         print(f"Contenido actual de {base_dir}: {os.listdir(base_dir)}")
         return
 
@@ -22,10 +22,10 @@ def start_ingestion():
     raw_documents = loader.load()
 
     if not raw_documents:
-        print("❌ ERROR: No se pudo extraer texto de los PDFs. ¿Están vacíos o son solo imágenes?")
+        print(" ERROR: No se pudo extraer texto de los PDFs. ¿Están vacíos o son solo imágenes?")
         return
 
-    print(f"✅ Cargados {len(raw_documents)} páginas de documentos.")
+    print(f" Cargados {len(raw_documents)} páginas de documentos.")
 
     # 2. Dividir en trozos (Chunks)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)

@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   ollama:
@@ -50,24 +49,24 @@ services:
       setup-rag:
         condition: service_completed_successfully
     restart: unless-stopped
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   # --- PANEL DE CONTROL (Opcional) ---
-  rag_dashboard:
-    build: .
-    container_name: rag_dashboard
-    user: root
-    ports:
-      - "8501:8501"
-    environment:
-      - API_URL=http://rag_api:8000
-    volumes:
-      - .:/app
-    depends_on:
-      rag_api:
-        condition: service_started
-    restart: unless-stopped
-    command: streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
-
+#  rag_dashboard:
+#    build: .
+#    container_name: rag_dashboard
+#    user: root
+#    ports:
+#      - "8501:8501"
+#    environment:
+#      - API_URL=http://rag_api:8000
+#    volumes:
+#      - .:/app
+#    depends_on:
+#      rag_api:
+#        condition: service_started
+#    restart: unless-stopped
+#    command: streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
+#
 volumes:
   ollama_data:
