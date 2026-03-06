@@ -11,7 +11,6 @@ from langchain_chroma import Chroma
 
 
 BASE_DIR = Path(__file__).resolve().parent
-
 app = FastAPI()
 
 # --- Configuración de Modelos y DB ---

@@ -26,7 +26,8 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
       - ./data/chroma:/app/data/chroma  # Persistencia de la DB
-      - ./app/docs:/app/docs                # Tus PDFs en Windows
+      - ./app/docs:/app/docs                # PDFs en Windows
+      - ./static/images:/app/static/images  # imagenes de pdfs
     command: >
       sh -c "echo 'Iniciando descarga de modelos y procesamiento...' && 
              curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"phi3\"}' && 
@@ -45,6 +46,7 @@ services:
     volumes:
       - .:/app                          # Sincroniza tu main.py
       - ./data/chroma:/app/data/chroma  # Lee la DB creada por setup-rag
+      - ./static:/app/static
     depends_on:
       setup-rag:
         condition: service_completed_successfully
@@ -52,21 +54,21 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   # --- PANEL DE CONTROL (Opcional) ---
-#  rag_dashboard:
-#    build: .
-#    container_name: rag_dashboard
-#    user: root
-#    ports:
-#      - "8501:8501"
-#    environment:
-#      - API_URL=http://rag_api:8000
-#    volumes:
-#      - .:/app
-#    depends_on:
-#      rag_api:
-#        condition: service_started
-#    restart: unless-stopped
-#    command: streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
-#
+# rag_dashboard:
+#   build: .
+#   container_name: rag_dashboard
+#   user: root
+#   ports:
+#     - "8501:8501"
+#   environment:
+#     - API_URL=http://rag_api:8000
+#   volumes:
+#     - .:/app
+#   depends_on:
+#     rag_api:
+#       condition: service_started
+#   restart: unless-stopped
+#   command: streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
+
 volumes:
   ollama_data:

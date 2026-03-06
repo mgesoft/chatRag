@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>🔌 WebSocket Debugger</h2>
+    <div id="status">Conectando...</div>
+    <div id="log"></div>
+
+    <script>
+        const log = (msg) => {
+            document.getElementById('log').innerHTML += `<p>${msg}</p>`;
+            console.log(msg);
+        };
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}/init`);
+
+        ws.onopen = () => {
+            document.getElementById('status').innerHTML = '✅ Conectado';
+            document.getElementById('status').style.color = 'green';
+            log('🟢 Conexión establecida');
+            ws.send(JSON.stringify([{role: "user", content: "test"}]));
+        };
+
+        ws.onmessage = (e) => {
+            log(`📩 Recibido: ${e.data.substring(0, 100)}...`);
+        };
+
+        ws.onerror = (e) => {
+            document.getElementById('status').innerHTML = '❌ Error de conexión';
+            document.getElementById('status').style.color = 'red';
+            log('🔴 Error: ' + JSON.stringify(e));
+        };
+
+        ws.onclose = () => {
+            log('🔌 Conexión cerrada');
+        };
+    </script>
+</body>
+</html>

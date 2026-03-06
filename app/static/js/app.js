@@ -7,7 +7,7 @@ const loadingBar = document.getElementById("loadingbar");
 const connectionStatus = document.getElementById("connection-status");
 
 let linesData = [];
-let currentResponseDiv = null;  //  Referencia directa al div de respuesta
+let currentResponseDiv = null;
 
 //  Manejar teclas
 function handleKeyDown(event) {
@@ -69,13 +69,13 @@ function submitText() {
     loadingBar.style.display = 'flex';
     scrollToBottom();
 
-    // 6.  Crear contenedor de respuesta del asistente
+    // 6. Crear contenedor de respuesta del asistente
     currentResponseDiv = document.createElement("div");
     currentResponseDiv.className = "line server";
     currentResponseDiv.innerHTML = '<span class="typing-indicator">...</span>';
     lines.appendChild(currentResponseDiv);
 
-    // 7.  Agregar placeholder al historial
+    // 7. Agregar placeholder al historial
     linesData.push({ role: "assistant", content: "" });
 
     scrollToBottom();
@@ -84,13 +84,11 @@ function submitText() {
 
 //  Actualizar respuesta en tiempo real
 function updateLastResponse(content) {
-    //  Usar referencia directa al div
     if (!currentResponseDiv) {
         console.warn(" No hay div de respuesta activo");
         return;
     }
 
-    //  Buscar el último assistant en linesData
     const lastIndex = linesData.length - 1;
     if (linesData[lastIndex] && linesData[lastIndex].role === "assistant") {
         linesData[lastIndex].content += content;
@@ -98,15 +96,78 @@ function updateLastResponse(content) {
         scrollToBottom();
     } else {
         console.warn(" No hay mensaje assistant en linesData");
-        console.log("linesData:", linesData);
     }
 }
 
-//  Finalizar respuesta
-function finishResponse() {
+//  Finalizar respuesta (CON IMÁGENES)
+function finishResponse(data) {
     console.log(" Respuesta finalizada");
     loadingBar.style.display = 'none';
-    currentResponseDiv = null;  //  Limpiar referencia
+    
+    if (currentResponseDiv) {
+        currentResponseDiv.removeAttribute("id");
+        
+        //  MOSTRAR IMÁGENES SI EXISTEN
+        if (data && data.images && data.images.length > 0) {
+            console.log(`🖼️ Mostrando ${data.images.length} imágenes`);
+            
+            const imagesContainer = document.createElement("div");
+            imagesContainer.className = "images-container";
+            
+            data.images.forEach((img, index) => {
+                const imgWrapper = document.createElement("div");
+                imgWrapper.className = "image-wrapper";
+                
+                // Imagen
+                const imgElement = document.createElement("img");
+                imgElement.src = img.url;
+                imgElement.alt = `Imagen página ${img.page}`;
+                imgElement.loading = "lazy";
+                imgElement.onclick = () => openImageModal(img.url);
+                
+                // Caption con info
+                const caption = document.createElement("p");
+                const imgInfo = img.type === 'page_snapshot' ? '📄 Vista de página' : '🖼️ Imagen';
+                caption.innerHTML = `${imgInfo} - Pág. ${img.page}`;
+                
+                imgWrapper.appendChild(imgElement);
+                imgWrapper.appendChild(caption);
+                imagesContainer.appendChild(imgWrapper);
+                
+                console.log(`  - Imagen ${index + 1}: ${img.url}`);
+            });
+            
+            currentResponseDiv.appendChild(imagesContainer);
+            scrollToBottom();
+        }
+        
+        currentResponseDiv = null;
+    }
+}
+
+//  Modal para ver imagen ampliada
+function openImageModal(imageUrl) {
+    // Crear modal
+    const modal = document.createElement("div");
+    modal.className = "image-modal";
+    modal.onclick = () => modal.remove();
+    
+    // Imagen grande
+    const img = document.createElement("img");
+    img.src = imageUrl;
+    img.onclick = (e) => {
+        e.stopPropagation(); // Evitar cerrar al hacer click en la imagen
+    };
+    
+    // Botón de cerrar
+    const closeBtn = document.createElement("div");
+    closeBtn.className = "image-modal-close";
+    closeBtn.innerHTML = "✕ Cerrar";
+    closeBtn.onclick = () => modal.remove();
+    
+    modal.appendChild(closeBtn);
+    modal.appendChild(img);
+    document.body.appendChild(modal);
 }
 
 //  Scroll al fondo
@@ -119,35 +180,27 @@ socket.onmessage = function(event) {
     try {
         const rdata = JSON.parse(event.data);
         console.log(" [WS] Acción:", rdata.action);
-        if (rdata.content) {
-            console.log(" [WS] Contenido:", rdata.content.substring(0, 50));
-        }
 
         switch(rdata.action) {
             case "init_system_response":
-                //  Solo para saludo inicial o nueva respuesta
-                if (!currentResponseDiv && linesData.length > 0) {
-                    // Si no hay respuesta activa pero hay historial, crear una
-                    currentResponseDiv = document.createElement("div");
-                    currentResponseDiv.className = "line server";
-                    currentResponseDiv.innerHTML = '';
-                    lines.appendChild(currentResponseDiv);
-                    linesData.push({ role: "assistant", content: "" });
-                }
+                console.log(" Iniciando respuesta...");
                 break;
-
+                
             case "append_system_response":
                 updateLastResponse(rdata.content);
                 break;
-
+                
             case "finish_system_response":
-                finishResponse();
+                finishResponse(rdata);  //  Pasar datos completos (incluye images)
                 break;
-
+                
             case "error":
                 loadingBar.style.display = 'none';
                 alert(" Error: " + rdata.message);
                 break;
+                
+            default:
+                console.warn(" Acción desconocida:", rdata.action);
         }
     } catch (e) {
         console.error(" Error parseando mensaje:", e);
