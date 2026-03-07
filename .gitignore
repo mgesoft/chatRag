@@ -2,3 +2,5 @@
 /data/chroma
 /app/__pycache__
 /app/docs
+/app/static/images
+/app/data/chroma

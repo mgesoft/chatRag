@@ -4,7 +4,7 @@ import json, os
 
 LOG_PATH = "./data/evaluations.jsonl"
 st.set_page_config("RAG Quality Dashboard", layout="wide")
-st.title("📊 Dashboard de Calidad RAG")
+st.title(" Dashboard de Calidad RAG")
 
 if not os.path.exists(LOG_PATH):
     st.warning("No hay evaluaciones todavía")

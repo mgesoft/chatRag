@@ -99,77 +99,73 @@ function updateLastResponse(content) {
     }
 }
 
-//  Finalizar respuesta (CON IMÁGENES)
+
 function finishResponse(data) {
-    console.log(" Respuesta finalizada");
+    console.log("✅ Respuesta finalizada");
     loadingBar.style.display = 'none';
-    
+
     if (currentResponseDiv) {
         currentResponseDiv.removeAttribute("id");
-        
-        //  MOSTRAR IMÁGENES SI EXISTEN
+
+        // ✅ MOSTRAR IMÁGENES SI EXISTEN
         if (data && data.images && data.images.length > 0) {
             console.log(`🖼️ Mostrando ${data.images.length} imágenes`);
-            
+
             const imagesContainer = document.createElement("div");
             imagesContainer.className = "images-container";
-            
+
             data.images.forEach((img, index) => {
                 const imgWrapper = document.createElement("div");
                 imgWrapper.className = "image-wrapper";
-                
-                // Imagen
+
+                // ✅ Usar la nueva ruta /images/ en lugar de /static/images/
                 const imgElement = document.createElement("img");
-                imgElement.src = img.url;
+                imgElement.src = img.url.startsWith('/images/')
+                    ? img.url
+                    : `/images/${img.filename || img.url.split('/').pop()}`;
+
                 imgElement.alt = `Imagen página ${img.page}`;
                 imgElement.loading = "lazy";
-                imgElement.onclick = () => openImageModal(img.url);
-                
+                imgElement.onclick = () => openImageModal(imgElement.src);
+
                 // Caption con info
                 const caption = document.createElement("p");
-                const imgInfo = img.type === 'page_snapshot' ? '📄 Vista de página' : '🖼️ Imagen';
-                caption.innerHTML = `${imgInfo} - Pág. ${img.page}`;
-                
+                caption.innerHTML = `📄 Página ${img.page}`;
+
                 imgWrapper.appendChild(imgElement);
                 imgWrapper.appendChild(caption);
                 imagesContainer.appendChild(imgWrapper);
-                
-                console.log(`  - Imagen ${index + 1}: ${img.url}`);
+
+                console.log(`  - Imagen ${index + 1}: ${imgElement.src}`);
             });
-            
+
             currentResponseDiv.appendChild(imagesContainer);
             scrollToBottom();
         }
-        
+
         currentResponseDiv = null;
     }
 }
 
-//  Modal para ver imagen ampliada
+
 function openImageModal(imageUrl) {
-    // Crear modal
     const modal = document.createElement("div");
     modal.className = "image-modal";
     modal.onclick = () => modal.remove();
-    
-    // Imagen grande
+
     const img = document.createElement("img");
     img.src = imageUrl;
-    img.onclick = (e) => {
-        e.stopPropagation(); // Evitar cerrar al hacer click en la imagen
-    };
-    
-    // Botón de cerrar
+    img.onclick = (e) => e.stopPropagation();
+
     const closeBtn = document.createElement("div");
     closeBtn.className = "image-modal-close";
     closeBtn.innerHTML = "✕ Cerrar";
     closeBtn.onclick = () => modal.remove();
-    
+
     modal.appendChild(closeBtn);
     modal.appendChild(img);
     document.body.appendChild(modal);
 }
-
 //  Scroll al fondo
 function scrollToBottom() {
     linesContainer.scrollTop = linesContainer.scrollHeight;
@@ -235,3 +231,4 @@ socket.onerror = (error) => {
 window.onload = () => {
     if (chatInput) chatInput.focus();
 };
+

@@ -1,6 +1,6 @@
 import json
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -17,7 +17,7 @@ app = FastAPI()
 #  mismo modelo de embeddings que en ingest.py
 embeddings = OllamaEmbeddings(
     model="nomic-embed-text",
-    base_url="http://ollama:11434"
+    base_url="http://localhost:11434"
 )
 
 # Cargamos la base de datos que ya tiene los 13 chunks
@@ -30,36 +30,14 @@ vector_db = Chroma(
 @app.websocket("/init")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("🚀 WebSocket Conectado")
+    print(" WebSocket Conectado")
 
     try:
-        # 1. SALUDO INICIAL
-        await websocket.send_json({"action": "init_system_response"})
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream("POST", "http://ollama:11434/api/chat",
-                                     json={
-                                         "model": "phi3",
-                                         "messages": [{"role": "user",
-                                                       "content": "Saluda brevemente."}],
-                                         "stream": True,
-                                         "options": {"num_gpu": 0, "num_thread": 4}
-                                     }) as response:
-                async for line in response.aiter_lines():
-                    if not line: continue
-                    chunk = json.loads(line)
-                    content = chunk.get("message", {}).get("content", "")
-                    if content:
-                        await websocket.send_json({"action": "append_system_response", "content": content})
-        await websocket.send_json({"action": "finish_system_response"})
-
-        # --- DENTRO DEL BUCLE while True del websocket_endpoint ---
-
         while True:
             try:
                 # 1. RECIBIR DATOS DEL CLIENTE
                 data = await websocket.receive_text()
 
-                # 2.  Parsear y validar el historial
                 try:
                     conversation_history = json.loads(data)
                     # Validar que sea una lista no vacía
@@ -78,8 +56,21 @@ async def websocket_endpoint(websocket: WebSocket):
                 print("🔍 Buscando en la base de datos vectorial...")
                 docs = vector_db.similarity_search(user_query, k=5)
 
+
                 print(f" Se encontraron {len(docs)} fragmentos.")
                 contexto = ""
+
+                images_found = []
+                for doc in docs:
+                    contexto += f"\n{doc.page_content}\n"
+
+                    #  Extraer URLs de la metadata
+                    if "image_urls" in doc.metadata:
+                        for url in doc.metadata["image_urls"]:
+                            if url not in images_found:
+                                images_found.append(url)
+
+
                 for i, d in enumerate(docs):
                     fuente = d.metadata.get('filename', d.metadata.get('source', 'desconocido'))
                     pagina = d.metadata.get('page', '?')
@@ -96,7 +87,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     {
                         "role": "system",
                         "content": f"""### ROL
-                Eres un asistente experto en Remote Eye. Usa los documentos como fuente principal.
+                Eres un asistente experto en maquinas de flexografia y hueco grabado de la empresaComexi. Usa los documentos como fuente principal.
 
                 ### CONTEXTO
                 <documentos>
@@ -108,7 +99,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 2. Prioriza la información de los <documentos>.
                 3. Si encuentras información relacionada, úsala con confianza.
                 4. Si NO hay nada relevante, di: "No encuentro detalles específicos en los documentos" y ofrece lo más cercano que veas.
-                5. Menciona la fuente cuando sea útil (ej: "Según wideum.pdf...").
+                5. Menciona la fuente cuando sea útil (ej: "Según la documentación...").
 
                 ### PREGUNTA
                 """
@@ -121,12 +112,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 # 6. Enviar respuesta streaming
                 await websocket.send_json({"action": "init_system_response"})
 
-                async with httpx.AsyncClient(timeout=90.0) as client:
+                async with httpx.AsyncClient(timeout=180.0) as client:
                     async with client.stream(
                             "POST",
-                            "http://ollama:11434/api/chat",  #  Ajustado para ejecución en host
+                            "http://localhost:11434/api/chat",  #  Ajustado para ejecución en host
                             json={
-                                "model": "phi3",
+                                "model": "llama3.1",
                                 "messages": messages_for_ollama,  #  Historial + contexto
                                 "stream": True,
                                 "options": {
@@ -154,7 +145,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             except json.JSONDecodeError:
                                 continue
 
-                await websocket.send_json({"action": "finish_system_response"})
+                await websocket.send_json({
+                    "action": "finish_system_response",
+                    "images": [{"url": url} for url in images_found]  #  ¡Añadir esto!
+                })
                 print(" Respuesta enviada. Esperando siguiente pregunta...")
 
             except WebSocketDisconnect:
@@ -180,6 +174,28 @@ async def websocket_endpoint(websocket: WebSocket):
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
+@app.get("/images/{filename}")
+async def get_image(filename: str):
+    """Sirve imágenes desde static/images"""
+    image_path = BASE_DIR / "static" / "images" / filename
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+
+    ext = filename.lower().split(".")[-1]
+    content_types = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "webp": "image/webp"
+    }
+
+    return FileResponse(
+        image_path,
+        media_type=content_types.get(ext, "image/octet-stream")
+    )
+
 @app.get("/")
 async def get_index():
     index_path = BASE_DIR / "static" / "index.html"
@@ -199,7 +215,7 @@ async def health_check():
             "status": "ok",
             "chunks_in_db": count,
             "connection": "chroma: OK",
-            "ollama": "http://ollama:11434"
+            "ollama": "http://localhost:11434"
         }
     except Exception as e:
         # Logging adicional para debugging en producción
@@ -228,3 +244,19 @@ async def debug_search(q: str = "¿Qué es Remote Eye?"):
         "chunks_found": len(docs),
         "results": results
     }
+
+
+# En main.py, después de app.mount("/static", ...):
+
+# ✅ Servir imágenes desde el volumen dedicado
+
+
+# ================= AUTO-ARRANQUE =================
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",  # O "main:app" si ejecutas desde la carpeta app/
+        host="0.0.0.0",
+        port=8000,
+        reload=True  # ✅ Recarga automática al guardar cambios (desactivar en producción)
+    )

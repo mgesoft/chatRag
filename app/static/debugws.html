@@ -15,7 +15,7 @@
         const ws = new WebSocket(`${protocol}//${window.location.host}/init`);
 
         ws.onopen = () => {
-            document.getElementById('status').innerHTML = '✅ Conectado';
+            document.getElementById('status').innerHTML = ' Conectado';
             document.getElementById('status').style.color = 'green';
             log('🟢 Conexión establecida');
             ws.send(JSON.stringify([{role: "user", content: "test"}]));
@@ -26,7 +26,7 @@
         };
 
         ws.onerror = (e) => {
-            document.getElementById('status').innerHTML = '❌ Error de conexión';
+            document.getElementById('status').innerHTML = 'Error de conexión';
             document.getElementById('status').style.color = 'red';
             log('🔴 Error: ' + JSON.stringify(e));
         };
