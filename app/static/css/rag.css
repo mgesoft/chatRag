@@ -28,7 +28,7 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 15px 20px;
-    background: #2c3e50;
+    background: #b12f2f;
     color: white;
     flex-shrink: 0;
 }
@@ -80,7 +80,7 @@ body {
 
 .line.user {
     align-self: flex-end;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+background: linear-gradient(135deg, #e1a5a5 0%, #c10e0e 100%);
     color: white;
     border-bottom-right-radius: 4px;
 }
@@ -131,7 +131,7 @@ body {
     max-height: 150px;
     padding: 12px;
     border: 2px solid #e0e0e0;
-    border-radius: 24px;
+    border-radius: 15px;
     outline: none;
     font-size: 1rem;
     line-height: 1.4;
@@ -141,7 +141,7 @@ body {
 }
 
 .textarea:focus {
-    border-color: #667eea;
+    border-color: #ea6666;
     background: white;
 }
 
@@ -155,7 +155,7 @@ body {
     height: 44px;
     border: none;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ea6666 0%, #a24b4b 100%);
     color: white;
     cursor: pointer;
     display: flex;
@@ -167,7 +167,7 @@ body {
 
 #send-btn:hover {
     transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 4px 12px rgba(234, 102, 102, 0.4);
 }
 
 #send-btn:active {
@@ -180,7 +180,7 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    background: rgba(102, 126, 234, 0.95);
+    background: rgba(234, 102, 102, 0.95);
     color: white;
     padding: 8px;
     text-align: center;
@@ -244,7 +244,6 @@ body {
 .image-wrapper {
     flex: 1 1 150px;
     max-width: 200px;
-    cursor: pointer;
     transition: transform 0.2s ease;
     background: white;
     border-radius: 8px;
@@ -262,6 +261,7 @@ body {
     height: auto;
     display: block;
     object-fit: cover;
+    cursor: pointer;
 }
 
 .image-wrapper p {

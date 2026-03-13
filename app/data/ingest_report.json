@@ -1,6 +1,6 @@
 {
-  "timestamp": "1772880115.076442",
-  "total_chunks": 224,
+  "timestamp": "1772965950.327988",
+  "total_chunks": 294,
   "total_images": 648,
   "unique_pages": 45,
   "unique_sources": 5,
@@ -9,6 +9,19 @@
       "filename": "2022_10_13_Instruccions_Calibració_LEL_MSA_Prima_X_IR.pdf",
       "page": 1,
       "preview": "Informe de calibració LEL MSA Infraroig \nPrima X IR \nCOMEXI \nCodi: MSA IR \nRevisió: 1 \nData: 13/10/2022 \nIdioma: Català \nPàgina 1 de 4 \n \nCalibració L",
+      "image_urls": [
+        "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_img1.png",
+        "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_page.jpg",
+        "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_img2.jpeg",
+        "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_page.jpg",
+        "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_img3.jpeg",
+        "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_page.jpg"
+      ]
+    },
+    {
+      "filename": "2022_10_13_Instruccions_Calibració_LEL_MSA_Prima_X_IR.pdf",
+      "page": 1,
+      "preview": "DESCRIPCIÓ \n \nEn aquest document es descriu el procés de calibració del sensor LEL MSA Infraroig Prima X IR. Aquest sensor \narriba calibrat de fàbrica",
       "image_urls": [
         "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_img1.png",
         "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p1_page.jpg",
@@ -49,22 +62,7 @@
     {
       "filename": "2022_10_13_Instruccions_Calibració_LEL_MSA_Prima_X_IR.pdf",
       "page": 2,
-      "preview": "* Cal indicar que no s’ha d’efectuar cap acció en el controlador del LEL, tot es realitzarà des de el capçal \nde calibració MSA. \n \nPROCEDIMENT DE CAL",
-      "image_urls": [
-        "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_img1.png",
-        "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_page.jpg",
-        "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_img2.jpeg",
-        "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_page.jpg",
-        "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_img3.jpeg",
-        "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_page.jpg",
-        "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_img4.png",
-        "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_page.jpg"
-      ]
-    },
-    {
-      "filename": "2022_10_13_Instruccions_Calibració_LEL_MSA_Prima_X_IR.pdf",
-      "page": 2,
-      "preview": "3. Posem el capçal de calibració MSA amb el display, que un cop l’introduïm en la posició s’iniciarà \nautomàticament. En condicions normals, el capçal",
+      "preview": "calibració només del zero o del zero i del span, però només calibrar el zero pot resultar insuficient per a una \ncalibració completa del sensor.",
       "image_urls": [
         "/static/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_img1.png",
         "/images/2022_10_13_instruccions_calibracio_lel_msa_prima_x_ir_p2_page.jpg",

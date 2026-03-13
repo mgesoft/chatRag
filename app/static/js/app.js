@@ -101,15 +101,15 @@ function updateLastResponse(content) {
 
 
 function finishResponse(data) {
-    console.log("✅ Respuesta finalizada");
+    console.log("Respuesta finalizada");
     loadingBar.style.display = 'none';
 
     if (currentResponseDiv) {
         currentResponseDiv.removeAttribute("id");
 
-        // ✅ MOSTRAR IMÁGENES SI EXISTEN
+        // MOSTRAR IMÁGENES SI EXISTEN
         if (data && data.images && data.images.length > 0) {
-            console.log(`🖼️ Mostrando ${data.images.length} imágenes`);
+            console.log(` Mostrando ${data.images.length} imágenes`);
 
             const imagesContainer = document.createElement("div");
             imagesContainer.className = "images-container";
@@ -118,8 +118,9 @@ function finishResponse(data) {
                 const imgWrapper = document.createElement("div");
                 imgWrapper.className = "image-wrapper";
 
-                // ✅ Usar la nueva ruta /images/ en lugar de /static/images/
+                // Usar la nueva ruta /images/ en lugar de /static/images/
                 const imgElement = document.createElement("img");
+                imgElement.className = "image-inserted";
                 imgElement.src = img.url.startsWith('/images/')
                     ? img.url
                     : `/images/${img.filename || img.url.split('/').pop()}`;
@@ -147,26 +148,61 @@ function finishResponse(data) {
     }
 }
 
-
 function openImageModal(imageUrl) {
+    console.log(" Abriendo modal con URL:", imageUrl);
+
+    // Verificar que la URL existe
+    if (!imageUrl) {
+        console.error(" URL de imagen vacía");
+        return;
+    }
+
+    // Crear modal
     const modal = document.createElement("div");
     modal.className = "image-modal";
     modal.onclick = () => modal.remove();
 
+    // Crear imagen y asignar src ANTES de añadir al DOM
     const img = document.createElement("img");
-    img.src = imageUrl;
-    img.onclick = (e) => e.stopPropagation();
+    img.src = imageUrl;  // ← Asignar primero
+    img.alt = "Imagen ampliada";
+    img.loading = "eager";  // ← Cargar inmediatamente
 
+    // Verificar que la imagen carga
+    img.onload = () => {
+        console.log("Imagen cargada correctamente:", imageUrl);
+    };
+
+    img.onerror = () => {
+        console.error(" Error cargando imagen:", imageUrl);
+        // Mostrar mensaje de error
+        img.alt = "Error cargando imagen";
+        img.style.opacity = "0.5";
+    };
+
+    // Detener propagación para no cerrar al hacer click en la imagen
+    img.onclick = (e) => {
+        e.stopPropagation();
+    };
+
+    // Botón de cerrar
     const closeBtn = document.createElement("div");
     closeBtn.className = "image-modal-close";
     closeBtn.innerHTML = "✕ Cerrar";
-    closeBtn.onclick = () => modal.remove();
+    closeBtn.onclick = (e) => {
+        e.stopPropagation();
+        modal.remove();
+    };
 
+    // Orden IMPORTANTE: añadir imagen al modal, luego modal al body
     modal.appendChild(closeBtn);
-    modal.appendChild(img);
+    modal.appendChild(img);  // ← img ya tiene src asignado
     document.body.appendChild(modal);
+
+    console.log("📦 Modal creado con imagen:", img.src);
 }
-//  Scroll al fondo
+
+
 function scrollToBottom() {
     linesContainer.scrollTop = linesContainer.scrollHeight;
 }

@@ -17,7 +17,7 @@ app = FastAPI()
 #  mismo modelo de embeddings que en ingest.py
 embeddings = OllamaEmbeddings(
     model="nomic-embed-text",
-    base_url="http://localhost:11434"
+    base_url="http://ollama:11434"
 )
 
 # Cargamos la base de datos que ya tiene los 13 chunks
@@ -61,14 +61,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 contexto = ""
 
                 images_found = []
+
                 for doc in docs:
                     contexto += f"\n{doc.page_content}\n"
 
-                    #  Extraer URLs de la metadata
                     if "image_urls" in doc.metadata:
+                        pagina = doc.metadata.get('page', '?')
                         for url in doc.metadata["image_urls"]:
-                            if url not in images_found:
-                                images_found.append(url)
+                            # Evitar duplicados
+                            if not any(img["url"] == url for img in images_found):
+                                images_found.append({
+                                    "url": url,
+                                    "page": pagina  # Añadir página
+                                })
 
 
                 for i, d in enumerate(docs):
@@ -83,10 +88,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Limitamos a los últimos 10 mensajes para no saturar el contexto
                 recent_history = conversation_history[-10:] if len(conversation_history) > 10 else conversation_history
 
-                messages_for_ollama = [
-                    {
-                        "role": "system",
-                        "content": f"""### ROL
+                messages_for_ollama = [{
+                    "role": "system",
+                    "content": f"""### ROL
                 Eres un asistente experto en maquinas de flexografia y hueco grabado de la empresaComexi. Usa los documentos como fuente principal.
 
                 ### CONTEXTO
@@ -103,10 +107,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 ### PREGUNTA
                 """
-                    }
-                ]
+                }, {"role": "user", "content": user_query}]
                 # Añadir la pregunta al final del sistema + historial
-                messages_for_ollama.append({"role": "user", "content": user_query})
                 messages_for_ollama.extend(recent_history)
 
                 # 6. Enviar respuesta streaming
@@ -115,15 +117,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 async with httpx.AsyncClient(timeout=180.0) as client:
                     async with client.stream(
                             "POST",
-                            "http://localhost:11434/api/chat",  #  Ajustado para ejecución en host
+                            "http://ollama:11434/api/chat",  #  Ajustado para ejecución en host
                             json={
-                                "model": "llama3.1",
+                                "model": "phi3",
                                 "messages": messages_for_ollama,  #  Historial + contexto
                                 "stream": True,
                                 "options": {
                                     "num_gpu": 0,  # 0 = solo CPU ( 1+ si  GPU)
                                     "num_thread": 4,
-                                    "temperature": 0.3,  # creatividad  numero mas bajo = respuestas más directas y rápidas
+                                    "temperature": 0.3,  # creatividad numero mas bajo = respuestas más directas y rápidas
                                     "num_ctx": 2048,  # Reduce si tus prompts no son muy largos (ahorra memoria)
                                     "num_predict": 512,  # Límite de tokens de respuesta (evita respuestas infinitas)
                                     "top_p": 0.9,  # Muestreo más eficiente
@@ -147,7 +149,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 await websocket.send_json({
                     "action": "finish_system_response",
-                    "images": [{"url": url} for url in images_found]  #  ¡Añadir esto!
+                    "images": images_found  #  ¡Añadir esto!
                 })
                 print(" Respuesta enviada. Esperando siguiente pregunta...")
 
@@ -207,15 +209,13 @@ async def get_index():
 @app.get("/health")
 async def health_check():
     try:
-        result = vector_db.get(include=[], limit=1)  # Solo verificamos que funcione
-        # Si queremos el conteo real, hacemos una llamada sin limit:
         full_result = vector_db.get(include=[])
         count = len(full_result.get("ids", []))
         return {
             "status": "ok",
             "chunks_in_db": count,
             "connection": "chroma: OK",
-            "ollama": "http://localhost:11434"
+            "ollama": "http://ollama:11434"
         }
     except Exception as e:
         # Logging adicional para debugging en producción
@@ -248,7 +248,7 @@ async def debug_search(q: str = "¿Qué es Remote Eye?"):
 
 # En main.py, después de app.mount("/static", ...):
 
-# ✅ Servir imágenes desde el volumen dedicado
+# Servir imágenes desde el volumen dedicado
 
 
 # ================= AUTO-ARRANQUE =================
@@ -258,5 +258,5 @@ if __name__ == "__main__":
         "app.main:app",  # O "main:app" si ejecutas desde la carpeta app/
         host="0.0.0.0",
         port=8000,
-        reload=True  # ✅ Recarga automática al guardar cambios (desactivar en producción)
+        reload=True  # Recarga automática al guardar cambios (desactivar en producción)
     )

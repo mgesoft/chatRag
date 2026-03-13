@@ -13,7 +13,7 @@ async def test_ollama():
             # Probar generación simple
             resp = await client.post(
                 "http://ollama:11434/api/generate",
-                json={"model": "llama3.1", "prompt": "Hola, responde en una palabra", "stream": False},
+                json={"model": "phi3", "prompt": "Hola, responde en una palabra", "stream": False},
                 timeout=60
             )
             print(f" Respuesta: {resp.json().get('response', 'N/A')[:100]}")

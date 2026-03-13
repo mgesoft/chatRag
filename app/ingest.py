@@ -24,7 +24,7 @@ IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 # Embeddings - APUNTANDO A OLLAMA LOCAL
 embeddings = OllamaEmbeddings(
     model="nomic-embed-text",
-    base_url="http://localhost:11434"  # ← localhost, no http://ollama:11434
+    base_url="http://ollama:11434"  # ← localhost, no http://ollama:11434 eso en dockers
 )
 
 
@@ -38,7 +38,7 @@ def extract_images_from_pdf(pdf_path: Path) -> list[dict]:
     images_meta = []
     pdf_name = pdf_path.stem
 
-    # ✅ SANITIZAR NOMBRE (quitar acentos y caracteres especiales)
+    # SANITIZAR NOMBRE (quitar acentos y caracteres especiales)
     safe_pdf_name = pdf_name.lower()
     safe_pdf_name = re.sub(r'[^\w\-]', '_', safe_pdf_name)  # Solo letras, números, guiones
     safe_pdf_name = re.sub(r'_+', '_', safe_pdf_name)  # Evitar múltiples guiones seguidos
@@ -58,7 +58,7 @@ def extract_images_from_pdf(pdf_path: Path) -> list[dict]:
                     image_bytes = base_image["image"]
                     image_ext = base_image["ext"]
 
-                    # ✅ Nombre sanitizado
+                    # Nombre sanitizado
                     img_filename = f"{safe_pdf_name}_p{page_num + 1}_img{img_index + 1}.{image_ext}"
                     img_path =IMAGES_DIR / img_filename
 
@@ -82,7 +82,7 @@ def extract_images_from_pdf(pdf_path: Path) -> list[dict]:
 
                     images_meta.append({
                         "page": page_num + 1,
-                        "url": f"/images/{img_filename}",  # ✅ CORRECT!
+                        "url": f"/images/{img_filename}",  # CORRECT!
                         "filename": img_filename,
                         "type": "page_snapshot"
                     })
@@ -127,7 +127,7 @@ def extract_text_by_page(pdf_path: Path) -> list[dict]:
 def create_chunks_with_metadata(
         pages_data: list[dict],
         images_meta: list[dict],
-        chunk_size: int = 500,
+        chunk_size: int = 300,
         chunk_overlap: int = 50
 ) -> list[Document]:
 

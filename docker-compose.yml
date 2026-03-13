@@ -25,7 +25,7 @@ services:
     volumes:
       - ./data/chroma:/app/data/chroma
       - ./docs:/app/docs
-      - images_data:/app/images       # ✅ CORREGIDO: Todo static
+      - images_data:/app/images       # CORREGIDO: Todo static
     command: >
       sh -c "echo 'Iniciando...' && 
              curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"phi3\"}' && 
